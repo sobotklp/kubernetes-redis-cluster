@@ -32,8 +32,9 @@ data:
   redis.conf: |+
     cluster-enabled yes
     cluster-require-full-coverage no
-    cluster-node-timeout 1000
+    cluster-node-timeout 15000
     cluster-config-file nodes.conf
+    cluster-migration-barrier 1 
     appendonly yes
     # Other cluster members need to be able to connect
     protected-mode no
@@ -80,7 +81,7 @@ metadata:
   name: redis-cluster
 spec:
   serviceName: redis-cluster
-  replicas: 3
+  replicas: 6
   template:
     metadata:
       labels:
