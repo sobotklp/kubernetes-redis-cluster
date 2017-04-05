@@ -18,6 +18,7 @@ spec:
     targetPort: 16379
     name: gossip
   clusterIP: None
+  #type: ClusterIP
   selector:
     app: redis-cluster
 ---
@@ -39,18 +40,22 @@ data:
     # Other cluster members need to be able to connect
     protected-mode no
 #
-# A script to bootstrap PetSet members as they initialize
+# A script to bootstrap Stateful Set members as they initialize
 # TODO: Move this logic into a separate Docker image. We shouldn't be doing this kind of hackery here.
 #
   bootstrap-pod.sh: |+
     #!/bin/sh
     set -e
 
-    # Find which member of the PetSet this pod is running
+    # Find which member of the Stateful Set this pod is running
     # e.g. "redis-cluster-0" -> "0"
     PET_ORDINAL=$(cat /etc/podinfo/pod_name | rev | cut -d- -f1)
 
     redis-server /conf/redis.conf &
+    # Discover peers
+    wget https://storage.googleapis.com/kubernetes-release/pets/peer-finder -O /bin/peer-finder
+    chmod u+x /bin/peer-finder
+    peer-finder -on-start 'tee > /conf/initial_peers' -service redis-cluster -ns $POD_NAMESPACE
 
     # TODO: Wait until redis-server process is ready
     sleep 1
@@ -87,13 +92,12 @@ spec:
       labels:
         app: redis-cluster
       annotations:
-        pod.alpha.kubernetes.io/initialized: "false"
         # NOTE: Init container must be idempotent
         # Add a baked-in Redis config file that enables cluster mode
         #pod.alpha.kubernetes.io/init-containers: '[
         #]'
     spec:
-      terminationGracePeriodSeconds: 0
+      terminationGracePeriodSeconds: 10
       #hostNetwork: true
       containers:
       - name: redis-cluster
@@ -107,7 +111,7 @@ spec:
         - sh
         args:
         - /conf/bootstrap-pod.sh
-        # Ensure that Redis is online before initializing the next pet.
+        # Ensure that Redis is online before initializing the next node.
         # TODO: Test that the cluster node is init'd properly.
         readinessProbe:
           exec:
@@ -117,6 +121,11 @@ spec:
             - "redis-cli -h $(hostname) ping"
           initialDelaySeconds: 15
           timeoutSeconds: 5
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         volumeMounts:
         - name: conf
           mountPath: /conf

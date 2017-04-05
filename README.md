@@ -4,15 +4,16 @@ This k8s module is intended to simplify the creation and operation of a Redis Cl
 
 ## Requirements
 
-Kubernetes version 1.3.0+ due to the use of Pet Sets.
-Minikube to run the module locally.
+- Kubernetes 1.5.0+
+- Minikube to run the module locally
 
 ## How it works
 
 These directions assume some familiarity with [Redis Cluster](http://redis.io/topics/cluster-tutorial). 
 
-When you create the resources in Kubernetes, it will create a 6-member (the minimum recommended size) [PetSet](http://kubernetes.io/docs/user-guide/petset/) cluster where the first (0th) member is the master and all other members are slaves.
+When you create the resources in Kubernetes, it will create a 6-member (the minimum recommended size) [Stateful Set](https://kubernetes.io/docs/concepts/abstractions/controllers/statefulsets/) cluster where the first (0th) member is the master and all other members are slaves.
 While that's sufficient for getting a cluster up and running, it doesn't distribute cluster slots like you would expect from a real deployment. In addition, automatic failover won't work because the cluster requires at least 2 masters to form a quorum.
+
 ## Testing it out
 
 If you don't already have Minikube installed, please follow the [documentation](https://github.com/kubernetes/minikube#installation) to set it up on your local machine.
@@ -30,7 +31,7 @@ To launch the cluster, have Kubernetes create all the resources in redis-cluster
 $ kubectl create -f redis-cluster.yml
 service "redis-cluster" created
 configmap "redis-cluster-config" configured
-petset "redis-cluster" created
+statefulset "redis-cluster" created
 ```
 
 Wait a bit for the service to initialize.
@@ -70,7 +71,7 @@ $ docker run --rm -it redis-trib reshard --from f6752d1c571bf7aa6935597aabd9b0c5
 To clean this mess off your Minikube VM:
 ```
 # Delete service and pet sets
-$ kubectl delete service,petsets redis-cluster
+$ kubectl delete service,statefulsets redis-cluster
 
 # To prevent potential data loss, deleting a pet set doesn't delete the pods. Gotta do that manually.
 $ kubectl delete pod redis-cluster-0 redis-cluster-1 redis-cluster-2 redis-cluster-3 redis-cluster-4 redis-cluster-5
