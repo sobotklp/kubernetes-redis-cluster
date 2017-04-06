@@ -121,6 +121,16 @@ spec:
             - "redis-cli -h $(hostname) ping"
           initialDelaySeconds: 15
           timeoutSeconds: 5
+
+        # Mark a node as down if Redis server stops running
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "redis-cli -h $(hostname) ping"
+          initialDelaySeconds: 20
+          periodSeconds: 3
         env:
         - name: POD_NAMESPACE
           valueFrom:

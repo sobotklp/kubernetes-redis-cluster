@@ -70,17 +70,16 @@ $ docker run --rm -it redis-trib reshard --from f6752d1c571bf7aa6935597aabd9b0c5
 ```
 To clean this mess off your Minikube VM:
 ```
-# Delete service and pet sets
+# Delete service and statefulset
 $ kubectl delete service,statefulsets redis-cluster
 
-# To prevent potential data loss, deleting a pet set doesn't delete the pods. Gotta do that manually.
+# To prevent potential data loss, deleting a statefulset doesn't delete the pods. Gotta do that manually.
 $ kubectl delete pod redis-cluster-0 redis-cluster-1 redis-cluster-2 redis-cluster-3 redis-cluster-4 redis-cluster-5
 ```
 
 ## TODO
 - Add documentation for common Redis Cluster operations: adding nodes, resharding, deleting nodes
 - Test some failure scenarios
-- livenessProbe
 - Create a ScheduledJob to do automated backups once [this feature](https://github.com/antirez/redis/issues/2463) is finished.
 - When a pod initializes, use the peer discovery tool to find one or more peers to connect with.
 - Create new Docker image to encapsulate pod initialization logic.
