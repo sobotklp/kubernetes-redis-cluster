@@ -66,7 +66,7 @@ data:
     else
       # Other members of the cluster join as slaves
       # TODO: Get list of peers using the peer finder using an init container
-      PEER_IP=$(perl -MSocket -e 'print inet_ntoa(scalar(gethostbyname("redis-cluster-0.redis-cluster.default.svc.cluster.local")))')
+      PEER_IP=$(perl -MSocket -e 'print inet_ntoa(scalar(gethostbyname("redis-cluster-0.redis-cluster.'$POD_NAMESPACE'.svc.cluster.local")))')
       redis-cli cluster meet $PEER_IP 6379
       sleep 1
 
