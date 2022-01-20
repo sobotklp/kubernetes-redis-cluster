@@ -4,12 +4,12 @@
 apiVersion: v1
 kind: Service
 metadata:
-  annotations:
-    service.alpha.kubernetes.io/tolerate-unready-endpoints: "false"
   name: redis-cluster
   labels:
     app: redis-cluster
+    environment: dev
 spec:
+  publishNotReadyAddresses: true
   ports:
   - port: 6379
     targetPort: 6379
@@ -29,6 +29,8 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: redis-cluster-config
+  labels:
+    app: redis-cluster
 data:
   redis.conf: |+
     cluster-enabled yes
@@ -45,26 +47,24 @@ data:
 #
   bootstrap-pod.sh: |+
     #!/bin/sh
-    set -e
+    set -ex
 
     # Find which member of the Stateful Set this pod is running
     # e.g. "redis-cluster-0" -> "0"
     PET_ORDINAL=$(cat /etc/podinfo/pod_name | rev | cut -d- -f1)
+    MY_SHARD=$(($PET_ORDINAL % $NUM_SHARDS))
 
     redis-server /conf/redis.conf &
-    # Discover peers
-    wget https://storage.googleapis.com/kubernetes-release/pets/peer-finder -O /bin/peer-finder
-    chmod u+x /bin/peer-finder
-    peer-finder -on-start 'tee > /conf/initial_peers' -service redis-cluster -ns $POD_NAMESPACE
-
+ 
     # TODO: Wait until redis-server process is ready
     sleep 1
 
     if [ $PET_ORDINAL = "0" ]; then
       # The first member of the cluster should control all slots initially
-      redis-cli cluster addslots $(seq 0 16383)
+      #redis-cli cluster addslots $(seq 0 16383)
+      echo "Starting initial node"
     else
-      # Other members of the cluster join as slaves
+      # Other members of the cluster join as replicas
       # TODO: Get list of peers using the peer finder using an init container
       PEER_IP=$(perl -MSocket -e 'print inet_ntoa(scalar(gethostbyname("redis-cluster-0.redis-cluster.default.svc.cluster.local")))')
       redis-cli cluster meet $PEER_IP 6379
@@ -74,34 +74,46 @@ data:
       #redis-cli --csv cluster slots
 
       # Become the slave of a random master node
-      MASTER_ID=$(redis-cli --csv cluster slots | cut -d, -f 5 | sed -e 's/^"//'  -e 's/"$//')
-      redis-cli cluster replicate $MASTER_ID
+      #MASTER_ID=$(redis-cli --csv cluster slots | cut -d, -f 5 | sed -e 's/^"//'  -e 's/"$//')
+      #redis-cli cluster replicate $MASTER_ID
+    fi
+
+    if [ $PET_ORDINAL -lt $NUM_SHARDS ]; then
+      # Set up primary nodes. Divide slots into equal(ish) contiguous blocks
+      NUM_SLOTS=$(( 16384 / $NUM_SHARDS ))
+      REMAINDER=$(( 16384 % $NUM_SHARDS ))
+      START_SLOT=$(( $NUM_SLOTS * $MY_SHARD + ($MY_SHARD < $REMAINDER ? $MY_SHARD : $REMAINDER) ))
+      END_SLOT=$(( $NUM_SLOTS * ($MY_SHARD+1) + ($MY_SHARD+1 < $REMAINDER ? $MY_SHARD+1 : $REMAINDER) - 1 ))
+      redis-cli cluster addslots $(seq $START_SLOT $END_SLOT)
+    #else
+      # Setting up a replica
     fi
 
     wait
 ---
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: redis-cluster
+  annotations:
+    shards: "3"  # If you modify this value, make sure there are at least 2 times the number of replicas
 spec:
+  podManagementPolicy: OrderedReady # default
   serviceName: redis-cluster
   replicas: 6
+  selector:
+    matchLabels:
+      app: redis-cluster # has to match .spec.template.metadata.labels
   template:
     metadata:
       labels:
         app: redis-cluster
-      annotations:
-        # NOTE: Init container must be idempotent
-        # Add a baked-in Redis config file that enables cluster mode
-        #pod.alpha.kubernetes.io/init-containers: '[
-        #]'
+        name: redis-cluster
     spec:
       terminationGracePeriodSeconds: 10
-      #hostNetwork: true
       containers:
       - name: redis-cluster
-        image: redis:3.2.1
+        image: redis:6.2.5
         ports:
         - containerPort: 6379
           name: client
@@ -119,9 +131,13 @@ spec:
             - sh
             - -c
             - "redis-cli -h $(hostname) ping"
-          initialDelaySeconds: 15
+          initialDelaySeconds: 5
           timeoutSeconds: 5
 
+        securityContext:
+            capabilities:
+              add:
+                - IPC_LOCK
         # Mark a node as down if Redis server stops running
         livenessProbe:
           exec:
@@ -136,6 +152,12 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NUM_SHARDS
+          value: "3"
         volumeMounts:
         - name: conf
           mountPath: /conf
@@ -143,6 +165,11 @@ spec:
         - name: podinfo
           mountPath: /etc/podinfo
           readOnly: false
+      initContainers:
+        # Wait for the redis-cluster service to exist. We need it to resolve the hostnames of our nodes
+      - name: init-redis-cluster
+        image: busybox:1.28
+        command: ['sh', '-c', "until nslookup redis-cluster.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for redis-cluster; sleep 2; done"]
       volumes:
       # Insert our pre-baked Redis configuration file into /conf/redis.conf
       - name: conf

@@ -1,0 +1,24 @@
+Initializing the Kubernetes Dashboard
+===
+
+Deploy the Dashboard app using Kubectl:
+    kubectl create -f https://raw.githubusercontent.com/kubernetes/dashboard/master/aio/deploy/recommended/kubernetes-dashboard.yaml
+
+Spin up proxy between our workstation and the Kubernetes control plane:
+    Kubectl proxy
+
+Now, we should be able to browse to http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/#/workloads?namespace=default
+
+Create a dashboard service account:
+    kubectl create serviceaccount dashboard-admin-sa
+
+Next bind the dashboard-admin-service-account service account to the cluster-admin role
+    kubectl create clusterrolebinding dashboard-admin-sa  --clusterrole=cluster-admin --serviceaccount=default:dashboard-admin-sa
+
+
+List secrets:
+    kubectl get secrets
+
+
+Use kubectl to get the access token. You can copy from here and paste it into the dashboard UI:
+    kubectl describe secret dashboard-admin-sa-token-abcde

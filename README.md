@@ -16,15 +16,6 @@ While that's sufficient for getting a cluster up and running, it doesn't distrib
 
 ## Testing it out
 
-If you don't already have Minikube installed, please follow the [documentation](https://github.com/kubernetes/minikube#installation) to set it up on your local machine.
-
-```
-# Start a local Kubernetes cluster
-$ minikube start
-
-# Direct kubectl to use Minikube
-$ kubectl config use-context minikube
-```
 To launch the cluster, have Kubernetes create all the resources in redis-cluster.yml:
 
 ```
@@ -39,7 +30,7 @@ Wait a bit for the service to initialize.
 Once all the pods are initialized, you can see that Pod "redis-cluster-0" became the cluster master with the other nodes as slaves.
 
 ```
-$ kubectl exec -it redis-cluster-0 redis-cli cluster nodes
+$ kubectl exec redis-cluster-0 -- redis-cli cluster nodes
 075293dd82cee03749b983de78cce0ae16b6fc9b 172.17.0.7:6379 slave 4fa0955c6bd58d66ede613bed512a7244c84b34e 0 1468198032209 1 connected
 a329f22420fa5ad50184ad8ae4dfcc81092f0e07 172.17.0.5:6379 slave 4fa0955c6bd58d66ede613bed512a7244c84b34e 0 1468198028663 1 connected
 ee3e96e11961a24ea705dfdcd53d507bd491a57e 172.17.0.8:6379 slave 4fa0955c6bd58d66ede613bed512a7244c84b34e 0 1468198033717 1 connected
@@ -48,9 +39,14 @@ ee3e96e11961a24ea705dfdcd53d507bd491a57e 172.17.0.8:6379 slave 4fa0955c6bd58d66e
 413898a0f8b835e0f8856798300f3451d8211ff4 172.17.0.6:6379 slave 4fa0955c6bd58d66ede613bed512a7244c84b34e 0 1468198032713 1 connected
 ```
 
+Also, you should be able to use redis-cli to connect to a cluster node we just created
 ```
-# Also, you should be able to use redis-cli to connect to a cluster node we just created
-$ kubectl exec -t -i redis-cluster-0 redis-cli
+$ kubectl exec -it redis-cluster-0 -- redis-cli
+```
+
+You can also check the slot configuration here:
+```
+$ kubectl exec redis-cluster-0 -- redis-cli --cluster check localhost 6379
 ```
 
 # To reshard a cluster
@@ -72,6 +68,7 @@ To clean this mess off your Minikube VM:
 ```
 # Delete service and statefulset
 $ kubectl delete service,statefulsets redis-cluster
+$ kubectl delete configmaps redis-cluster-config
 
 # To prevent potential data loss, deleting a statefulset doesn't delete the pods. Gotta do that manually.
 $ kubectl delete pod redis-cluster-0 redis-cluster-1 redis-cluster-2 redis-cluster-3 redis-cluster-4 redis-cluster-5
