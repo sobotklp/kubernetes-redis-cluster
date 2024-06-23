@@ -60,7 +60,7 @@ data:
 
     # Find which member of the Stateful Set this pod is running
     # e.g. "redis-cluster-0" -> "0"
-    PET_ORDINAL=$(cat /etc/podinfo/pod_name | rev | cut -d- -f1)
+    PET_ORDINAL=$(cat /etc/podinfo/pod_name | rev | cut -d- -f1 | rev)
     MY_SHARD=$(($PET_ORDINAL % $NUM_SHARDS))
 
     redis-server /conf/redis.conf &
